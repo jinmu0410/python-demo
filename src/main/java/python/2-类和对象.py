@@ -30,4 +30,3 @@ test1.name = "小黑"
 b= test1.name
 print(b)
 
-

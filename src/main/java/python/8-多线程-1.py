@@ -7,11 +7,8 @@ class MyThread(threading.Thread):
     def run(self):
         print("%s正在运行中......" % self.name)
 
-
-for i in range(10):
-    MyThread("thread-" + str(i)).start()
-
-# if __name__ == '__main__':
-#     for i in range(10):
-#         MyThread("thread-" + str(i)).start()
+##main方法
+if __name__ == '__main__':
+    for i in range(10):
+        MyThread("thread-" + str(i)).start()
 
