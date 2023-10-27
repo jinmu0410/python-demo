@@ -2,7 +2,7 @@ import openai
 
 msg = input()
 
-openai.api_key = "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"
+openai.api_key = "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"
 
 response = openai.Completion.create(
     engine ="text-davinci-003",
