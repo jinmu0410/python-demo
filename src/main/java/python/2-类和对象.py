@@ -18,15 +18,18 @@ class Cat:
 
 ########################
 
-test1 = Cat("小黄",2)
-test1.eat()
-Cat.work()
-#Cat.test()
 
-## 设置属性
-a = test1.name
-print(a)
-test1.name = "小黑"
-b= test1.name
-print(b)
 
+if __name__ == '__main__':
+    test1 = Cat("小黄",2)
+    test1.eat()
+    Cat.work()
+    print("-------")
+    #Cat.test()
+
+    ## 设置属性
+    a = test1.name
+    print(a)
+    test1.name = "小黑"
+    b= test1.name
+    print(b)

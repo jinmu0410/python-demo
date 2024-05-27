@@ -58,7 +58,7 @@ def get_large_audio_transcription_on_silence_whisper(path, export_chunk_len):
 
 
 if __name__ == '__main__':
-    path="/Users/jinmu/Downloads/111.mp3"
+    path="/Users/jinmu/Downloads/ffmpeg/output_audio.mp3"
     export_chunk_len = 90 * 1000
 
     audio_text = get_large_audio_transcription_on_silence_whisper(path, export_chunk_len)
