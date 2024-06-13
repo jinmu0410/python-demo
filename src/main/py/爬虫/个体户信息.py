@@ -214,7 +214,7 @@ if __name__ == '__main__':
        "331181"
    ]
 
-   path = "/Users/jinmu/Downloads/self/python-demo/src/main/java/爬虫/data/个体户/浙江/丽水.xlsx"
+   path = "/py/爬虫/data/个体户/浙江/丽水.xlsx"
 
 
    test = [
