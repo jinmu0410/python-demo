@@ -17,6 +17,7 @@ linkUrl = fastGptUrl + '/api/core/dataset/collection/create/link'
 fileUrl = fastGptUrl + '/api/core/dataset/collection/create/file'
 loginUrl = fastGptUrl + '/api/support/user/account/loginByPassword'
 collectionUrl = fastGptUrl + '/api/core/dataset/collection/create'
+datasetUrl = fastGptUrl + '/api/core/dataset/create'
 collectionListUrl = fastGptUrl + '/api/core/dataset/collection/list'
 appKey = 'fastgpt-9TnYVdHG5RJ8fsQirqFwPpIHkGKVsezUJDqhW3WeHQqUBVNotGvGREhMbUFoz'
 fast_username = 'root'
@@ -348,6 +349,30 @@ def fastgpt_login(username,password):
     else:
         print('Failed to fetch data. Status Code:', response.status_code)
         print('Response Body:', response.text)
+
+
+#批量创建知识库
+def batch_create_dataset(parentId,datasetNames):
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + appKey
+    }
+    for datasetName in datasetNames:
+        data = {
+            'agentModel':'moonshot-v1-128k',
+            'avatar': '/icon/logo.svg',
+            'name' : '企业基础数据-' + datasetName,
+            'intro': '',
+            'parentId': parentId,
+            'type': 'dataset',
+            'vectorModel': 'm3e'
+        }
+        response = requests.post(datasetUrl,data = json.dumps(data), headers=headers)
+        # 检查响应状态码并输出响应内容
+        if response.status_code == 200:
+           print('创建知识库成功--' + datasetName)
+
+
 
 
 if __name__ == '__main__':
