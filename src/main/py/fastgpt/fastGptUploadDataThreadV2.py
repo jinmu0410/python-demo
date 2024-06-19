@@ -120,7 +120,7 @@ def process_record(records, collection_map, token, parentId, datasetId, host,por
                         parent_id = collection_id
                     else:
                         collection_id = tmp_map.get("_id")
-                        parent_id = tmp_map.get("parentId")
+                        parent_id = collection_id #tmp_map.get("parentId")
                     collection_map[province] = collection_id
                     if sub_cid is None:
                         # 市
@@ -133,8 +133,8 @@ def process_record(records, collection_map, token, parentId, datasetId, host,por
                         collection_map[city] = sub_collection_id
 
                 # 上传数据到fastGpt
-                fina_collection_id = collection_map.get(province) if collection_map.get(province) else collection_map.get(city)
-                upload_status = insert_data(fina_collection_id, record, "")
+                fina_collection_id = collection_map.get(city) if collection_map.get(city) else collection_map.get(province)
+                upload_status = insert_data(fina_collection_id, ','.join(str(i) for i in record), "")
                 if upload_status:
                     update_params = ('1', id)
                     update_mysql_data(connection, update_params)
