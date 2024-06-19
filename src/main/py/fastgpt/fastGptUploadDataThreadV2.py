@@ -50,17 +50,17 @@ def read_mysql_data(host, database, user, password, port, query):
             global flag
             flag = False
         batches = list(split_records_into_batches(records, 200))
-        for record in batches:
-            process_record(list(record), collection_map, token, parentId, datasetId, host, port, user, password, database)
+        # for record in batches:
+        #     process_record(list(record), collection_map, token, parentId, datasetId, host, port, user, password, database)
         # # 使用 ThreadPoolExecutor 进行多线程处理
-        # with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        #     # 提交任务
-        #     futures = [executor.submit(
-        #         process_record,
-        #         list(record), collection_map, token, parentId, datasetId, host,port,user,password,database
-        #     ) for record in batches]
-        #     # 等待所有任务完成
-        #     concurrent.futures.wait(futures)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            # 提交任务
+            futures = [executor.submit(
+                process_record,
+                list(record), collection_map, token, parentId, datasetId, host,port,user,password,database
+            ) for record in batches]
+            # 等待所有任务完成
+            concurrent.futures.wait(futures)
     except pymysql.MySQLError as e:
         print(f"错误: {e}")
     finally:
