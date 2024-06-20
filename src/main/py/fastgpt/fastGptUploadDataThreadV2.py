@@ -49,10 +49,10 @@ def read_mysql_data(host, database, user, password, port, query):
         if records is None:
             global flag
             flag = False
-        batches = list(split_records_into_batches(records, 200))
+        batches = list(split_records_into_batches(records, 500))
         # for record in batches:
         #     process_record(list(record), collection_map, token, parentId, datasetId, host, port, user, password, database)
-        # # 使用 ThreadPoolExecutor 进行多线程处理
+        # 使用 ThreadPoolExecutor 进行多线程处理
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             # 提交任务
             futures = [executor.submit(
@@ -98,8 +98,8 @@ def process_record(records, collection_map, token, parentId, datasetId, host,por
         )
         for record in records:
                 id = record[0]
-                province = record[28].split(":")[1]
-                city = record[29].split(":")[1]
+                province = record[29].split(":")[1]
+                city = record[30].split(":")[1]
                 cid = collection_map.get(province)
                 sub_cid = collection_map.get(city)
                 # 不要id  删掉
@@ -131,6 +131,21 @@ def process_record(records, collection_map, token, parentId, datasetId, host,por
                         else:
                             sub_collection_id = sub_tmp_map.get("_id")
                         collection_map[city] = sub_collection_id
+                # 省存在了
+                else:
+                    tmp_map = get_collection_list(parentId, datasetId, province)
+                    parent_id = tmp_map.get("_id")
+                    # 把省的id拿过来作为父id去获取/创建市id
+                    if sub_cid is None:
+                        # 市
+                        sub_tmp_map = get_collection_list(parent_id, datasetId, city)
+                        if sub_tmp_map is None:
+                            # 没有则创建新的集合
+                            sub_collection_id = create_collection(parent_id,city,'virtual')
+                        else:
+                            sub_collection_id = sub_tmp_map.get("_id")
+                        collection_map[city] = sub_collection_id
+
 
                 # 上传数据到fastGpt
                 fina_collection_id = collection_map.get(city) if collection_map.get(city) else collection_map.get(province)
@@ -358,7 +373,7 @@ def create_collection(parentId,collectionName,type):
     response = requests.post(collectionUrl, data=json.dumps(data), headers=headers)
     # 检查响应状态码并输出响应内容
     if response.status_code == 200:
-        print('创建目录成功--' + collectionName)
+        print('创建成功--'+ type + collectionName)
         response_json = response.json()
         data = response_json.get('data', {})
         if data:
