@@ -1,6 +1,7 @@
 import os
 import json
 import time
+from typing import List, Dict, Any
 
 import requests
 from requests_toolbelt.multipart.encoder import MultipartEncoder
@@ -20,16 +21,21 @@ collectionUrl = fastGptUrl + '/api/core/dataset/collection/create'
 datasetUrl = fastGptUrl + '/api/core/dataset/create'
 collectionListUrl = fastGptUrl + '/api/core/dataset/collection/list'
 insertUtl = fastGptUrl + '/api/core/dataset/data/insertData'
+pushUrl = fastGptUrl + '/api/core/dataset/data/pushData'
+
 appKey = 'fastgpt-9TnYVdHG5RJ8fsQirqFwPpIHkGKVsezUJDqhW3WeHQqUBVNotGvGREhMbUFoz'
 fast_username = 'root'
-fast_password= '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4'
+fast_password = '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4'
 
 update_query = "UPDATE stg_model.stg_company_basic_info SET handle_status = %s WHERE id = %s"
 
+batch_update_query = "UPDATE stg_model.stg_company_basic_info SET handle_status = %s WHERE id in (%s)"
+
 parentId = ''
-datasetId ='66680ebba1d4f2f9ce06ad0b'
+datasetId = '66680ebba1d4f2f9ce06ad0b'
 token = ''
 collection_map = {}
+
 
 def read_mysql_data(host, database, user, password, port, query):
     try:
@@ -49,7 +55,7 @@ def read_mysql_data(host, database, user, password, port, query):
         if records is None:
             global flag
             flag = False
-        batches = list(split_records_into_batches(records, 500))
+        batches = list(split_records_into_batches(records, 1000))
         # for record in batches:
         #     process_record(list(record), collection_map, token, parentId, datasetId, host, port, user, password, database)
         # 使用 ThreadPoolExecutor 进行多线程处理
@@ -57,7 +63,7 @@ def read_mysql_data(host, database, user, password, port, query):
             # 提交任务
             futures = [executor.submit(
                 process_record,
-                list(record), collection_map, token, parentId, datasetId, host,port,user,password,database
+                list(record), collection_map, token, parentId, datasetId, host, port, user, password, database
             ) for record in batches]
             # 等待所有任务完成
             concurrent.futures.wait(futures)
@@ -70,24 +76,27 @@ def read_mysql_data(host, database, user, password, port, query):
             connection.close()
             print("MySQL 数据库连接已关闭")
 
+
 def update_mysql_data(connection, update_params):
     try:
         cursor = connection.cursor()
-        cursor.execute(update_query, update_params)
+        cursor.execute(batch_update_query, update_params)
         # 提交事务
         connection.commit()
     except pymysql.MySQLError as e:
         print(f"错误: {e}")
         connection.rollback()  # 在出现错误时回滚事务
 
+
 def split_records_into_batches(records, batch_size):
     # 将记录分批
     for i in range(0, len(records), batch_size):
         yield records[i:i + batch_size]
 
+
 # 定义处理单个记录的函数
-def process_record(records, collection_map, token, parentId, datasetId, host,port,user,password,database):
-    t=time.time()
+def process_record(records, collection_map, token, parentId, datasetId, host, port, user, password, database):
+    t = time.time()
     try:
         connection = pymysql.connect(
             host=host,
@@ -97,72 +106,165 @@ def process_record(records, collection_map, token, parentId, datasetId, host,por
             database=database
         )
         for record in records:
-                id = record[0]
-                province = record[29].split(":")[1]
-                city = record[30].split(":")[1]
-                cid = collection_map.get(province)
-                sub_cid = collection_map.get(city)
-                # 不要id  删掉
-                record_list = list(record)
-                del record_list[0]
-                record = tuple(record_list)
+            id = record[0]
+            province = record[29].split(":")[1]
+            city = record[30].split(":")[1]
+            cid = collection_map.get(province)
+            sub_cid = collection_map.get(city)
+            # 不要id  删掉
+            record_list = list(record)
+            del record_list[0]
+            record = tuple(record_list)
 
-                # 创建集合：手动集合
-                if cid is None:
-                    # 省
-                    tmp_map = get_collection_list(parentId, datasetId, province)
-                    collection_id = ''
-                    parent_id = ''
-                    if tmp_map is None:
-                        # 省没有，则创建目录集合
-                        collection_id = create_collection(parent_id,province,'folder')
-                        # 新建省目录后，该集合id就是目录下手动集合的父id
-                        parent_id = collection_id
-                    else:
-                        collection_id = tmp_map.get("_id")
-                        parent_id = collection_id #tmp_map.get("parentId")
-                    collection_map[province] = collection_id
-                    if sub_cid is None:
-                        # 市
-                        sub_tmp_map = get_collection_list(parent_id, datasetId, city)
-                        if sub_tmp_map is None:
-                            # 没有则创建新的集合
-                            sub_collection_id = create_collection(parent_id,city,'virtual')
-                        else:
-                            sub_collection_id = sub_tmp_map.get("_id")
-                        collection_map[city] = sub_collection_id
-                # 省存在了
+            # 创建集合：手动集合
+            if cid is None:
+                # 省
+                tmp_map = get_collection_list(parentId, datasetId, province)
+                collection_id = ''
+                parent_id = ''
+                if tmp_map is None:
+                    # 省没有，则创建目录集合
+                    collection_id = create_collection(parent_id, province, 'folder')
+                    # 新建省目录后，该集合id就是目录下手动集合的父id
+                    parent_id = collection_id
                 else:
-                    tmp_map = get_collection_list(parentId, datasetId, province)
-                    parent_id = tmp_map.get("_id")
-                    # 把省的id拿过来作为父id去获取/创建市id
-                    if sub_cid is None:
-                        # 市
-                        sub_tmp_map = get_collection_list(parent_id, datasetId, city)
-                        if sub_tmp_map is None:
-                            # 没有则创建新的集合
-                            sub_collection_id = create_collection(parent_id,city,'virtual')
-                        else:
-                            sub_collection_id = sub_tmp_map.get("_id")
-                        collection_map[city] = sub_collection_id
+                    collection_id = tmp_map.get("_id")
+                    parent_id = collection_id  # tmp_map.get("parentId")
+                collection_map[province] = collection_id
+                if sub_cid is None:
+                    # 市
+                    sub_tmp_map = get_collection_list(parent_id, datasetId, city)
+                    if sub_tmp_map is None:
+                        # 没有则创建新的集合
+                        sub_collection_id = create_collection(parent_id, city, 'virtual')
+                    else:
+                        sub_collection_id = sub_tmp_map.get("_id")
+                    collection_map[city] = sub_collection_id
+            # 省存在了
+            else:
+                tmp_map = get_collection_list(parentId, datasetId, province)
+                parent_id = tmp_map.get("_id")
+                # 把省的id拿过来作为父id去获取/创建市id
+                if sub_cid is None:
+                    # 市
+                    sub_tmp_map = get_collection_list(parent_id, datasetId, city)
+                    if sub_tmp_map is None:
+                        # 没有则创建新的集合
+                        sub_collection_id = create_collection(parent_id, city, 'virtual')
+                    else:
+                        sub_collection_id = sub_tmp_map.get("_id")
+                    collection_map[city] = sub_collection_id
 
-
-                # 上传数据到fastGpt
-                fina_collection_id = collection_map.get(city) if collection_map.get(city) else collection_map.get(province)
-                upload_status = insert_data(fina_collection_id, ','.join(str(i) for i in record), "")
-                if upload_status:
-                    update_params = ('1', id)
-                    update_mysql_data(connection, update_params)
-                    print(f"更新数据库成功---id---{id}")
+            # 上传数据到fastGpt
+            fina_collection_id = collection_map.get(city) if collection_map.get(city) else collection_map.get(province)
+            upload_status = insert_data(fina_collection_id, ','.join(str(i) for i in record), "")
+            if upload_status:
+                update_params = ('1', id)
+                update_mysql_data(connection, update_params)
+                print(f"更新数据库成功---id---{id}")
     except Exception as e:
         print(f'处理异常==>{e}==>record==>{record}')
     finally:
         if connection:
             connection.close()
             print("MySQL 数据库连接已关闭")
-    print(f"处理耗时==>{time.time()-t}")
+    print(f"处理耗时==>{time.time() - t}")
 
-#读取远程地址文件上传到fastgpt
+
+# 批量处理
+def process_record_list(records, collection_map, token, parentId, datasetId, host, port, user, password, database):
+    t = time.time()
+    try:
+        connection = pymysql.connect(
+            host=host,
+            port=port,  # 指定自定义端口
+            user=user,
+            password=password,
+            database=database
+        )
+
+        # records属于同一个省同一个市
+        first_record = records[0]
+        # id = first_record[0]
+        province = first_record[29].split(":")[1]
+        city = first_record[30].split(":")[1]
+        cid = collection_map.get(province)
+        sub_cid = collection_map.get(city)
+        # # 不要id  删掉
+        # record_list = list(first_record)
+        # del record_list[0]
+        # first_record = tuple(record_list)
+
+        # 创建集合：手动集合
+        if cid is None:
+            # 省
+            tmp_map = get_collection_list(parentId, datasetId, province)
+            collection_id = ''
+            parent_id = ''
+            if tmp_map is None:
+                # 省没有，则创建目录集合
+                collection_id = create_collection(parent_id, province, 'folder')
+                # 新建省目录后，该集合id就是目录下手动集合的父id
+                parent_id = collection_id
+            else:
+                collection_id = tmp_map.get("_id")
+                parent_id = collection_id  # tmp_map.get("parentId")
+            collection_map[province] = collection_id
+            if sub_cid is None:
+                # 市
+                sub_tmp_map = get_collection_list(parent_id, datasetId, city)
+                if sub_tmp_map is None:
+                    # 没有则创建新的集合
+                    sub_collection_id = create_collection(parent_id, city, 'virtual')
+                else:
+                    sub_collection_id = sub_tmp_map.get("_id")
+                collection_map[city] = sub_collection_id
+        # 省存在了
+        else:
+            tmp_map = get_collection_list(parentId, datasetId, province)
+            parent_id = tmp_map.get("_id")
+            # 把省的id拿过来作为父id去获取/创建市id
+            if sub_cid is None:
+                # 市
+                sub_tmp_map = get_collection_list(parent_id, datasetId, city)
+                if sub_tmp_map is None:
+                    # 没有则创建新的集合
+                    sub_collection_id = create_collection(parent_id, city, 'virtual')
+                else:
+                    sub_collection_id = sub_tmp_map.get("_id")
+                collection_map[city] = sub_collection_id
+
+        # 集合准备完毕
+        # 往对应的市集合下插入数据
+        fina_collection_id = collection_map.get(city)
+        fina_record_list = []
+        id_list = []
+        # 记录处理
+        for ele in records:
+            record_list = list(ele)
+            id_list.append(record_list[0])
+            del record_list[0]
+            new_list = tuple(record_list)
+            fina_record_list.append(','.join(str(i) for i in new_list))
+
+        # 批量插入
+        upload_status = push_data(fina_collection_id, "chunk", fina_record_list)
+        if upload_status:
+            # for id in id_list:
+            update_params = ('1', ','.join(str(i) for i in id_list))
+            update_mysql_data(connection, update_params)
+            print(f"批量更新数据库成功---id---{id_list}")
+
+    except Exception as e:
+        print(f'处理异常==>{e}==>record==>{records}')
+    finally:
+        if connection:
+            connection.close()
+            print("MySQL 数据库连接已关闭")
+    print(f"处理耗时==>{time.time() - t}")
+
+
+# 读取远程地址文件上传到fastgpt
 def upload_remote_fastgpt_data(token, file_url):
     headers = {
         'token': token  # 如果需要身份验证
@@ -203,7 +305,7 @@ def upload_remote_fastgpt_data(token, file_url):
                 return data
 
 
-def upload_file(token,parentId,datasetId,file_path):
+def upload_file(token, parentId, datasetId, file_path):
     headers = {
         'token': token  # 如果需要身份验证
         # 'Content-type': "multipart/form-data; charset=utf-8"
@@ -221,14 +323,14 @@ def upload_file(token,parentId,datasetId,file_path):
             data = response_json.get('data', {})
             if data:
                 print('上传文件成功---' + file_path + '---fileId=' + data)
-                create_fastgpt_csvTable(parentId,datasetId, data)
+                create_fastgpt_csvTable(parentId, datasetId, data)
     except Exception as e:
         return {'error': str(e)}
 
 
-def upload_fastgpt_data(token,directory_path):
+def upload_fastgpt_data(token, directory_path):
     # 只处理特定类型的文件，例如CSV文件
-    allowed_extensions = ['.csv','.pdf','.txt','.word']
+    allowed_extensions = ['.csv', '.pdf', '.txt', '.word']
 
     # 定义请求头
     headers = {
@@ -256,7 +358,7 @@ def upload_fastgpt_data(token,directory_path):
             multipart_data = MultipartEncoder(fields=files)
             headers['Content-Type'] = multipart_data.content_type
             # 发送HTTP POST请求
-            response = requests.post(uploadUrl, headers=headers, data = multipart_data)
+            response = requests.post(uploadUrl, headers=headers, data=multipart_data)
 
             # 检查响应状态码并输出响应内容
             if response.status_code == 200:
@@ -268,8 +370,8 @@ def upload_fastgpt_data(token,directory_path):
     return uploadFiles
 
 
-#创建表格集合
-def create_fastgpt_csvTable(parentId,datasetId,fileId):
+# 创建表格集合
+def create_fastgpt_csvTable(parentId, datasetId, fileId):
     headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + appKey
@@ -285,8 +387,8 @@ def create_fastgpt_csvTable(parentId,datasetId,fileId):
         print('创建成功-' + fileId)
 
 
-#创建链接集合
-def create_fastgpt_link(appKey,parentId,datasetId,link):
+# 创建链接集合
+def create_fastgpt_link(appKey, parentId, datasetId, link):
     headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + appKey
@@ -302,8 +404,9 @@ def create_fastgpt_link(appKey,parentId,datasetId,link):
     if response.status_code == 200:
         print('创建链接成功')
 
-#创建文本集合
-def create_fastgpt_file(parentId,datasetId,fileId,chunkSplitter):
+
+# 创建文本集合
+def create_fastgpt_file(parentId, datasetId, fileId, chunkSplitter):
     headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + appKey
@@ -328,7 +431,7 @@ def create_fastgpt_file(parentId,datasetId,fileId,chunkSplitter):
 
 
 # 获取集合目录list
-def get_collection_list(parentId,datasetId,text):
+def get_collection_list(parentId, datasetId, text):
     headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + appKey
@@ -348,7 +451,7 @@ def get_collection_list(parentId,datasetId,text):
         collect_info_map = {}
         if data_array:
             _id = data_array[0]["_id"]
-            parentId =  data_array[0]["parentId"]
+            parentId = data_array[0]["parentId"]
             collect_info_map["_id"] = _id
             collect_info_map["parentId"] = parentId
             print("查询获取的集合信息:", collect_info_map)
@@ -357,8 +460,8 @@ def get_collection_list(parentId,datasetId,text):
         return None
 
 
-#创建空集合目录  文件夹:folder   手动集合:virtual
-def create_collection(parentId,collectionName,type):
+# 创建空集合目录  文件夹:folder   手动集合:virtual
+def create_collection(parentId, collectionName, type):
     headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + appKey
@@ -367,13 +470,13 @@ def create_collection(parentId,collectionName,type):
         "datasetId": datasetId,
         "parentId": parentId,
         "name": collectionName,
-        "type":type,
-        "metadata":{}
+        "type": type,
+        "metadata": {}
     }
     response = requests.post(collectionUrl, data=json.dumps(data), headers=headers)
     # 检查响应状态码并输出响应内容
     if response.status_code == 200:
-        print('创建成功--'+ type + collectionName)
+        print('创建成功--' + type + collectionName)
         response_json = response.json()
         data = response_json.get('data', {})
         if data:
@@ -381,7 +484,7 @@ def create_collection(parentId,collectionName,type):
 
 
 # 手动集合中插入记录
-def insert_data(collectionId,q,a):
+def insert_data(collectionId, q, a):
     headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + appKey
@@ -390,7 +493,7 @@ def insert_data(collectionId,q,a):
         "collectionId": collectionId,
         "q": q,
         "a": a,
-        "indexes":[]
+        "indexes": []
     }
     response = requests.post(insertUtl, data=json.dumps(data), headers=headers)
     if response.status_code == 200:
@@ -400,12 +503,46 @@ def insert_data(collectionId,q,a):
         return False
 
 
-#获取token
-def fastgpt_login(username,password):
+# 向集合中批量添加数据
+# 参数传入记录集合
+# 注意：每次最多推送 200 组数据
+#       同一组数据最好在业务上属于相同范围,这样放入相同的集合好管理
+# trainingMode = chunk/qa
+def push_data(collectionId, trainingMode, records):
+    records_map_list = []
+    for record in records:
+        qa_pair = {
+            "q": record,
+            "a": ""
+        }
+        records_map_list.append(qa_pair)
+
+    headers = {
+        'Authorization': 'Bearer ' + appKey,
+        'Content-Type': 'application/json'
+    }
+    data_raw = {
+        "collectionId": collectionId,
+        "trainingMode": trainingMode,
+        # "prompt": '',
+        # "billId": "",
+        "data": records_map_list
+    }
+    response = requests.post(pushUrl, data=json.dumps(data_raw), headers=headers)
+    if response.status_code == 200:
+        print('批量记录插入成功--' + records)
+        return True
+    else:
+        # print('批量记录插入失败--' + records)
+        return False
+
+
+# 获取token
+def fastgpt_login(username, password):
     headers = {'Content-Type': 'application/json'}
-    data ={
-        "username":username,
-        "password":password
+    data = {
+        "username": username,
+        "password": password
     }
     response = requests.post(loginUrl, data=json.dumps(data), headers=headers)
 
@@ -423,28 +560,26 @@ def fastgpt_login(username,password):
         print('Response Body:', response.text)
 
 
-#批量创建知识库
-def batch_create_dataset(parentId,datasetNames):
+# 批量创建知识库
+def batch_create_dataset(parentId, datasetNames):
     headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + appKey
     }
     for datasetName in datasetNames:
         data = {
-            'agentModel':'moonshot-v1-128k',
+            'agentModel': 'moonshot-v1-128k',
             'avatar': '/icon/logo.svg',
-            'name' : '企业基础数据-' + datasetName,
+            'name': '企业基础数据-' + datasetName,
             'intro': '',
             'parentId': parentId,
             'type': 'dataset',
             'vectorModel': 'm3e'
         }
-        response = requests.post(datasetUrl,data = json.dumps(data), headers=headers)
+        response = requests.post(datasetUrl, data=json.dumps(data), headers=headers)
         # 检查响应状态码并输出响应内容
         if response.status_code == 200:
-           print('创建知识库成功--' + datasetName)
-
-
+            print('创建知识库成功--' + datasetName)
 
 
 if __name__ == '__main__':
@@ -460,6 +595,8 @@ if __name__ == '__main__':
     # read_mysql_data(host,database,user,password,port,query)
     # insert_data("66729d7327c7172c8149bcb9","test","")
 
+    # param = ["1","2","3"]
+    # re = push_data("66681eb9a1d4f2f9ce06b285","chunk",param)
 
     flag = True
 
@@ -503,10 +640,11 @@ if __name__ == '__main__':
                  ',concat_ws(\':\',\'所属城市\',IFNULL(city,\'暂无相关信息\')) as city'
                  ',concat_ws(\':\',\'所属区域\',IFNULL(area,\'暂无相关信息\')) as area '
                  'from stg_model.stg_company_basic_info '
-                 'where handle_status = \'0\''
-                 'limit 5000')
+                 'where handle_status = \'0\' '
+                 # 'and province = \'云南省\' and city = \'保山市\''
+                 'limit 10000')
 
-        token = fastgpt_login(fast_username,fast_password)
-        read_mysql_data(host,database,user,password,port,query)
+        token = fastgpt_login(fast_username, fast_password)
+        read_mysql_data(host, database, user, password, port, query)
 
     print("全部执行完成")
