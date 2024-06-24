@@ -29,7 +29,7 @@ fast_password = '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f
 
 update_query = "UPDATE stg_model.stg_company_basic_info SET handle_status = %s WHERE id = %s"
 
-batch_update_query = "UPDATE stg_model.stg_company_basic_info SET handle_status = %s WHERE id in (%s)"
+batch_update_query = "UPDATE stg_model.stg_company_basic_info SET handle_status = %s WHERE id in %s"
 
 parentId = ''
 datasetId = '66680ebba1d4f2f9ce06ad0b'
@@ -55,14 +55,14 @@ def read_mysql_data(host, database, user, password, port, query):
         if records is None:
             global flag
             flag = False
-        batches = list(split_records_into_batches(records, 1000))
+        batches = list(split_records_into_batches(records, 200))
         # for record in batches:
-        #     process_record(list(record), collection_map, token, parentId, datasetId, host, port, user, password, database)
+        #     process_record_list(list(record), collection_map, token, parentId, datasetId, host, port, user, password, database)
         # 使用 ThreadPoolExecutor 进行多线程处理
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             # 提交任务
             futures = [executor.submit(
-                process_record,
+                process_record_list,
                 list(record), collection_map, token, parentId, datasetId, host, port, user, password, database
             ) for record in batches]
             # 等待所有任务完成
@@ -77,10 +77,67 @@ def read_mysql_data(host, database, user, password, port, query):
             print("MySQL 数据库连接已关闭")
 
 
+def read_mysql_data_v1(host, database, user, password, port, query):
+    try:
+        # 连接到 MySQL 数据库
+        connection = pymysql.connect(
+            host=host,
+            port=port,  # 指定自定义端口
+            user=user,
+            password=password,
+            database=database
+        )
+        cursor = connection.cursor()
+        print("执行查询" + query)
+        cursor.execute(query)
+        records = cursor.fetchall()
+        return records
+    except pymysql.MySQLError as e:
+        print(f"错误: {e}")
+    finally:
+        # 关闭数据库连接
+        if connection:
+            cursor.close()
+            connection.close()
+            print("MySQL 数据库连接已关闭")
+
+
+def mid_process(records, token, parentId, datasetId, host, port, user, password, database):
+    if records is None:
+        global flag
+        flag = False
+    batches = list(split_records_into_batches(records, 200))
+    # for record in batches:
+    #     process_record_list(list(record), collection_map, token, parentId, datasetId, host, port, user, password,
+    #                         database)
+    # 使用 ThreadPoolExecutor 进行多线程处理
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # 提交任务
+        futures = [executor.submit(
+            process_record_list,
+            list(record), collection_map, token, parentId, datasetId, host, port, user, password, database
+        ) for record in batches]
+        # 等待所有任务完成
+        concurrent.futures.wait(futures)
+
+
 def update_mysql_data(connection, update_params):
     try:
         cursor = connection.cursor()
-        cursor.execute(batch_update_query, update_params)
+        cursor.execute(update_query, update_params)
+        # 提交事务
+        connection.commit()
+    except pymysql.MySQLError as e:
+        print(f"错误: {e}")
+        connection.rollback()  # 在出现错误时回滚事务
+
+
+def update_mysql_data_batch(connection, update_params):
+    try:
+        cursor = connection.cursor()
+        update_sql = batch_update_query % update_params
+        # print(update_sql)
+        cursor.execute(update_sql)
         # 提交事务
         connection.commit()
     except pymysql.MySQLError as e:
@@ -188,6 +245,8 @@ def process_record_list(records, collection_map, token, parentId, datasetId, hos
         # id = first_record[0]
         province = first_record[29].split(":")[1]
         city = first_record[30].split(":")[1]
+        if province == city:
+            city = city + '_virtual'
         cid = collection_map.get(province)
         sub_cid = collection_map.get(city)
         # # 不要id  删掉
@@ -251,9 +310,11 @@ def process_record_list(records, collection_map, token, parentId, datasetId, hos
         upload_status = push_data(fina_collection_id, "chunk", fina_record_list)
         if upload_status:
             # for id in id_list:
-            update_params = ('1', ','.join(str(i) for i in id_list))
-            update_mysql_data(connection, update_params)
-            print(f"批量更新数据库成功---id---{id_list}")
+            sub_str = '(' + ','.join('\'' + str(i) + '\'' for i in id_list) + ')'
+            update_params: tuple[str, str] = ('1', sub_str)
+
+            update_mysql_data_batch(connection, update_params)
+            print(f"批量更新数据库成功---id---{sub_str}")
 
     except Exception as e:
         print(f'处理异常==>{e}==>record==>{records}')
@@ -529,8 +590,9 @@ def push_data(collectionId, trainingMode, records):
         "data": records_map_list
     }
     response = requests.post(pushUrl, data=json.dumps(data_raw), headers=headers)
-    if response.status_code == 200:
-        print('批量记录插入成功--' + records)
+    code = response.status_code
+    if code == 200:
+        print('批量记录插入成功--' + ','.join(str(i) for i in records))
         return True
     else:
         # print('批量记录插入失败--' + records)
@@ -607,6 +669,7 @@ if __name__ == '__main__':
         port = 9030
         user = 'root'
         password = '123456'
+
         query = ('select id'
                  ',concat_ws(\':\',\'公司名称\',IFNULL(company_name,\'暂无相关信息\')) as company_name'
                  ',concat_ws(\':\',\'成立时间\',IFNULL(establishment_date,\'暂无相关信息\')) as establishment_date'
@@ -641,10 +704,36 @@ if __name__ == '__main__':
                  ',concat_ws(\':\',\'所属区域\',IFNULL(area,\'暂无相关信息\')) as area '
                  'from stg_model.stg_company_basic_info '
                  'where handle_status = \'0\' '
-                 # 'and province = \'云南省\' and city = \'保山市\''
+                 'and province = \'%s\' and city = \'%s\' '
+                 'and company_introduction is not null '
                  'limit 10000')
+        #
+        query_module = 'select province ,city from stg_model.stg_company_basic_info where province is not null and city is not null and  handle_status = \'0\' group by province ,city order by province ,city ;'
 
-        token = fastgpt_login(fast_username, fast_password)
-        read_mysql_data(host, database, user, password, port, query)
+        collection_list_not_process = list(read_mysql_data_v1(host, database, user, password, port, query_module))
+
+        if collection_list_not_process is not None:
+            parm = []
+            for i in collection_list_not_process:
+                ii = (i[0], i[1])
+                parm.append(ii)
+
+            token = fastgpt_login(fast_username, fast_password)
+            for sub_parm in parm:
+                sub_flag = True
+                while sub_flag:
+                    final_query = query % sub_parm
+                    records = read_mysql_data_v1(host, database, user, password, port, final_query)
+
+                    tag = not records
+                    if not tag:
+                        mid_process(records, token, parentId, datasetId, host, port, user, password, database)
+                    else:
+                        sub_flag = False
+        else:
+            print("全部处理完成")
+            flag = False
+
+        # read_mysql_data(host, database, user, password, port, query)
 
     print("全部执行完成")
