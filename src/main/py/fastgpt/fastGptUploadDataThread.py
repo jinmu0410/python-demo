@@ -10,7 +10,7 @@ import pymysql
 from urllib.parse import urlparse
 import concurrent.futures
 
-fastGptUrl = 'http://192.168.201.13:3000'
+fastGptUrl = 'http://192.168.201.12:3000'
 uploadUrl = fastGptUrl + '/api/common/file/upload'
 csvTableUrl = fastGptUrl + '/api/core/dataset/collection/create/csvTable'
 linkUrl = fastGptUrl + '/api/core/dataset/collection/create/link'
@@ -19,14 +19,14 @@ loginUrl = fastGptUrl + '/api/support/user/account/loginByPassword'
 collectionUrl = fastGptUrl + '/api/core/dataset/collection/create'
 datasetUrl = fastGptUrl + '/api/core/dataset/create'
 collectionListUrl = fastGptUrl + '/api/core/dataset/collection/list'
-appKey = 'fastgpt-9TnYVdHG5RJ8fsQirqFwPpIHkGKVsezUJDqhW3WeHQqUBVNotGvGREhMbUFoz'
+appKey = 'fastgpt-FENi9BMzeVft1VYJBzMvyeGipZi9LHfiTIs5nVLJaeD9ZoxLEws3Pab'
 fast_username = 'root'
 fast_password= '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4'
 
-update_query = "UPDATE stg_model.report_base SET report_status = %s WHERE id = %s"
+update_query = "UPDATE stg_model.report_base SET report_status_1 = %s WHERE id = %s"
 
 parentId = ''
-datasetId ='66680ea4a1d4f2f9ce06acd7'
+datasetId ='667d19248b64afc3bfed1fc1'
 token = ''
 collection_map = {}
 
@@ -49,8 +49,14 @@ def read_mysql_data(host, database, user, password, port, query):
             flag = False
         batches = list(split_records_into_batches(records, 500))
 
+        process_record(list(batches[0]), collection_map, token, parentId, datasetId, host, port, user, password,
+                            database)
+        batches.pop(0)
+
+        # for record in batches:
+        #     process_record(list(record), collection_map, token, parentId, datasetId, host, port, user, password, database)
         # 使用 ThreadPoolExecutor 进行多线程处理
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
             # 提交任务
             futures = [executor.submit(process_record, list(record), collection_map, token, parentId, datasetId, host,port,user,password,database) for record in batches]
             # 等待所有任务完成
@@ -396,7 +402,7 @@ if __name__ == '__main__':
         port = 3305
         user = 'root'
         password = 'Gysj_2024'
-        query = 'SELECT * FROM stg_model.report_base where report_status = \'0\' limit 5000'
+        query = 'SELECT * FROM stg_model.report_base where report_status_1 = \'0\' limit 5000'
 
         token = fastgpt_login(fast_username,fast_password)
         read_mysql_data(host,database,user,password,port,query)

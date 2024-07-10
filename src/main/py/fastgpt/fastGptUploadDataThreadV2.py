@@ -93,7 +93,7 @@ def read_mysql_data_v1(host, database, user, password, port, query):
         records = cursor.fetchall()
         return records
     except pymysql.MySQLError as e:
-        print(f"错误: {e}")
+        print(f": {e}")
     finally:
         # 关闭数据库连接
         if connection:
@@ -107,9 +107,10 @@ def mid_process(records, token, parentId, datasetId, host, port, user, password,
         global flag
         flag = False
     batches = list(split_records_into_batches(records, 200))
-    # for record in batches:
-    #     process_record_list(list(record), collection_map, token, parentId, datasetId, host, port, user, password,
-    #                         database)
+    #
+    process_record_list(list(batches[0]), collection_map, token, parentId, datasetId, host, port, user, password,
+                        database)
+    batches.pop(0)
     # 使用 ThreadPoolExecutor 进行多线程处理
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         # 提交任务
@@ -314,7 +315,8 @@ def process_record_list(records, collection_map, token, parentId, datasetId, hos
             update_params: tuple[str, str] = ('1', sub_str)
 
             update_mysql_data_batch(connection, update_params)
-            print(f"批量更新数据库成功---id---{sub_str}")
+            print(f"批量更新数据库成功---id---")
+            # print(f"批量更新数据库成功---id---{sub_str}")
 
     except Exception as e:
         print(f'处理异常==>{e}==>record==>{records}')
@@ -592,10 +594,11 @@ def push_data(collectionId, trainingMode, records):
     response = requests.post(pushUrl, data=json.dumps(data_raw), headers=headers)
     code = response.status_code
     if code == 200:
-        print('批量记录插入成功--' + ','.join(str(i) for i in records))
+        print('批量记录插入成功--')
+        # print('批量记录插入成功--' + ','.join(str(i) for i in records))
         return True
     else:
-        # print('批量记录插入失败--' + records)
+        print('批量记录插入失败--')
         return False
 
 
@@ -706,6 +709,7 @@ if __name__ == '__main__':
                  'where handle_status = \'0\' '
                  'and province = \'%s\' and city = \'%s\' '
                  'and company_introduction is not null '
+                 'and company_name is not null '
                  'limit 10000')
         #
         query_module = 'select province ,city from stg_model.stg_company_basic_info where province is not null and city is not null and  handle_status = \'0\' group by province ,city order by province ,city ;'
