@@ -10,7 +10,7 @@ import pymysql
 from urllib.parse import urlparse
 import concurrent.futures
 
-fastGptUrl = 'http://192.168.201.13:3000'
+fastGptUrl = 'http://115.231.27.8:3000'
 uploadUrl = fastGptUrl + '/api/common/file/upload'
 csvTableUrl = fastGptUrl + '/api/core/dataset/collection/create/csvTable'
 linkUrl = fastGptUrl + '/api/core/dataset/collection/create/link'
@@ -19,14 +19,16 @@ loginUrl = fastGptUrl + '/api/support/user/account/loginByPassword'
 collectionUrl = fastGptUrl + '/api/core/dataset/collection/create'
 datasetUrl = fastGptUrl + '/api/core/dataset/create'
 collectionListUrl = fastGptUrl + '/api/core/dataset/collection/list'
-appKey = 'fastgpt-9TnYVdHG5RJ8fsQirqFwPpIHkGKVsezUJDqhW3WeHQqUBVNotGvGREhMbUFoz'
+appKey = 'fastgpt-GSBo1XRBgz90gOsx7WGppzUPT1dywiYaoOl1ZoxDjTEUFVq7uEYrfyQvMMG2VV'
 fast_username = 'root'
-fast_password= '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4'
+#1234
+#fast_password= '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4'
+fast_password = '1dc3d00eef12a2025ca704079686336daccd91c208c8c43c94bc9601a059d8ec'
 
 update_query = "UPDATE stg_model.report_base SET report_status = %s WHERE id = %s"
 
 parentId = ''
-datasetId ='66680ea4a1d4f2f9ce06acd7'
+datasetId ='667140db4d43f0c8a25ae917'
 token = ''
 collection_map = {}
 
@@ -83,13 +85,13 @@ def split_records_into_batches(records, batch_size):
 def process_record(records, collection_map, token, parentId, datasetId, host,port,user,password,database):
     t=time.time()
     try:
-        connection = pymysql.connect(
-            host=host,
-            port=port,  # 指定自定义端口
-            user=user,
-            password=password,
-            database=database
-        )
+        # connection = pymysql.connect(
+        #     host=host,
+        #     port=port,  # 指定自定义端口
+        #     user=user,
+        #     password=password,
+        #     database=database
+        # )
         for record in records:
                 id = record[0]
                 industry = record[9]
@@ -102,16 +104,16 @@ def process_record(records, collection_map, token, parentId, datasetId, host,por
                     collection_map[industry] = collection_id
                 fileId = upload_remote_fastgpt_data(token, url)
                 upload_status = create_fastgpt_file(collection_map.get(industry), datasetId, fileId, '')
-                if upload_status:
-                    update_params = ('1', id)
-                    update_mysql_data(connection, update_params)
-                    print(f"更新数据库成功---id---{id}")
+                # if upload_status:
+                #     update_params = ('1', id)
+                #     update_mysql_data(connection, update_params)
+                #     print(f"更新数据库成功---id---{id}")
     except Exception as e:
         print(f'处理异常==>{e}==>record==>{record}')
-    finally:
-        if connection:
-            connection.close()
-            print("MySQL 数据库连接已关闭")
+    #finally:
+        # if connection:
+        #     connection.close()
+        #     print("MySQL 数据库连接已关闭")
     print(f"处理耗时==>{time.time()-t}")
 
 #读取远程地址文件上传到fastgpt
@@ -377,28 +379,54 @@ def batch_create_dataset(parentId,datasetNames):
 
 if __name__ == '__main__':
     # # 示例使用
-    # host = '192.168.201.14'
-    # database = 'stg_model'
-    # port = 3305
-    # user = 'root'
-    # password = 'Gysj_2024'
-    # query = 'SELECT * FROM stg_model.report_base where report_status = \'0\' limit 100'
+    host = '192.168.201.14'
+    database = 'stg_model'
+    port = 3305
+    user = 'root'
+    password = 'Gysj_2024'
+    query = 'SELECT * FROM (SELECT *,ROW_NUMBER() OVER (PARTITION BY industry ORDER BY publish_date DESC) AS rn FROM report_base) AS ranked_reports WHERE rn <= 100;'
+
+    token = fastgpt_login(fast_username,fast_password)
+    read_mysql_data(host,database,user,password,port,query)
+
+    # flag = True
+    # #
+    # while flag:
+    #     # 示例使用
+    #     host = '192.168.201.14'
+    #     database = 'stg_model'
+    #     port = 3305
+    #     user = 'root'
+    #     password = 'Gysj_2024'
+    #     query = 'SELECT * FROM (SELECT *,ROW_NUMBER() OVER (PARTITION BY industry ORDER BY publish_date DESC) AS rn FROM report_base) AS ranked_reports WHERE rn <= 100;'
+    #     
+    #     token = fastgpt_login(fast_username,fast_password)
+    #     read_mysql_data(host,database,user,password,port,query)
+    # 
+    # print("全部执行完成")
+
+    # parentId = '666c024a27c7172c8136bd1f'
+    # dataseNames = {
+    #     "河北省",
+    #     "山西省",
+    #     "辽宁省",
+    #     "吉林省",
+    #     "黑龙江省",
+    #     "安徽省",
+    #     "福建省",
+    #     "江西省",
+    #     "山东省",
+    #     "河南省",
+    #     "湖北省",
+    #     "湖南省",
+    #     "广东省",
+    #     "海南省",
+    #     "四川省",
+    #     "贵州省",
+    #     "陕西省",
+    #     "甘肃省",
+    #     "青海省",
+    #     "台湾省"
+    # }
     #
-    # token = fastgpt_login(fast_username,fast_password)
-    # read_mysql_data(host,database,user,password,port,query)
-
-    flag = True
-
-    while flag:
-        # 示例使用
-        host = '192.168.201.14'
-        database = 'stg_model'
-        port = 3305
-        user = 'root'
-        password = 'Gysj_2024'
-        query = 'SELECT * FROM stg_model.report_base where report_status = \'0\' limit 5000'
-
-        token = fastgpt_login(fast_username,fast_password)
-        read_mysql_data(host,database,user,password,port,query)
-
-    print("全部执行完成")
+    # batch_create_dataset(parentId,dataseNames)
